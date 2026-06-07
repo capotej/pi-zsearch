@@ -11,10 +11,11 @@
 import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateHead } from "@mariozechner/pi-coding-agent";
-import { Type } from "typebox";
+import { type Static, Type } from "typebox";
 
 const ZAI_SEARCH_URL = "https://api.z.ai/api/paas/v4/web_search";
 const ZAI_READER_URL = "https://api.z.ai/api/paas/v4/reader";
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,70 @@ interface ZaiReaderResponse {
 	};
 }
 
+// ── Parameter Schemas ───────────────────────────────────────────────────
+
+const WebSearchParams = Type.Object({
+	query: Type.String({
+		description: "The search query string",
+	}),
+	count: Type.Optional(
+		Type.Number({
+			description: "Number of results to return (1-50, default 10)",
+			minimum: 1,
+			maximum: 50,
+		}),
+	),
+	domain: Type.Optional(
+		Type.String({
+			description: "Limit results to a specific domain (e.g. 'github.com')",
+		}),
+	),
+	recency: Type.Optional(
+		StringEnum(["oneDay", "oneWeek", "oneMonth", "oneYear", "noLimit"] as const, {
+			description: "Time range filter: oneDay, oneWeek, oneMonth, oneYear, noLimit (default)",
+		}),
+	),
+});
+
+const WebReadParams = Type.Object({
+	url: Type.String({
+		description: "The URL to read and parse",
+	}),
+	return_format: Type.Optional(
+		StringEnum(["markdown", "text"] as const, {
+			description: "Return format for the page content. Default is markdown.",
+		}),
+	),
+	no_cache: Type.Optional(
+		Type.Boolean({
+			description: "Whether to disable caching. Default is false.",
+		}),
+	),
+	retain_images: Type.Optional(
+		Type.Boolean({
+			description: "Whether to retain images in the output. Default is true.",
+		}),
+	),
+	with_images_summary: Type.Optional(
+		Type.Boolean({
+			description: "Whether to include a summary of images found on the page. Default is false.",
+		}),
+	),
+	with_links_summary: Type.Optional(
+		Type.Boolean({
+			description: "Whether to include a summary of links found on the page. Default is false.",
+		}),
+	),
+	timeout: Type.Optional(
+		Type.Number({
+			description: "Request timeout in seconds. Default is 20.",
+		}),
+	),
+});
+
+type WebSearchParamsType = Static<typeof WebSearchParams>;
+type WebReadParamsType = Static<typeof WebReadParams>;
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 function getApiKey(): string {
@@ -55,12 +120,24 @@ function getApiKey(): string {
 	return key;
 }
 
+const URL_PATTERN = /^https?:\/\//i;
+
+function validateUrl(url: string): void {
+	if (!URL_PATTERN.test(url)) {
+		throw new Error(`Invalid URL: must start with http:// or https://, got "${url}"`);
+	}
+}
+
 async function zaiFetch(
 	endpoint: string,
 	body: Record<string, unknown>,
 	signal: AbortSignal | undefined,
 ): Promise<unknown> {
 	const apiKey = getApiKey();
+
+	const combinedSignal = signal
+		? AbortSignal.any([signal, AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS)])
+		: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS);
 
 	const response = await fetch(endpoint, {
 		method: "POST",
@@ -69,7 +146,7 @@ async function zaiFetch(
 			Authorization: `Bearer ${apiKey}`,
 		},
 		body: JSON.stringify(body),
-		signal,
+		signal: combinedSignal,
 	});
 
 	if (!response.ok) {
@@ -77,7 +154,11 @@ async function zaiFetch(
 		throw new Error(`Z.AI API error (${response.status}): ${errorText || response.statusText}`);
 	}
 
-	return response.json();
+	try {
+		return await response.json();
+	} catch {
+		throw new Error(`Z.AI API returned invalid JSON (status ${response.status})`);
+	}
 }
 
 function truncateOutput(text: string): string {
@@ -94,7 +175,7 @@ function truncateOutput(text: string): string {
 }
 
 function formatSearchResults(results: ZaiSearchResult[]): string {
-	if (results.length === 0) {
+	if (!Array.isArray(results) || results.length === 0) {
 		return "No results found.";
 	}
 
@@ -130,37 +211,11 @@ export default function (pi: ExtensionAPI) {
 			"Use web_search when you need current or real-time information that may not be in your training data.",
 			"Use web_search when the user asks about recent events, news, or any time-sensitive topic.",
 		],
-		parameters: Type.Object({
-			query: Type.String({
-				description: "The search query string",
-			}),
-			count: Type.Optional(
-				Type.Number({
-					description: "Number of results to return (1-50, default 10)",
-					minimum: 1,
-					maximum: 50,
-				}),
-			),
-			domain: Type.Optional(
-				Type.String({
-					description: "Limit results to a specific domain (e.g. 'github.com')",
-				}),
-			),
-			recency: Type.Optional(
-				StringEnum(["oneDay", "oneWeek", "oneMonth", "oneYear", "noLimit"] as const, {
-					description: "Time range filter: oneDay, oneWeek, oneMonth, oneYear, noLimit (default)",
-				}),
-			),
-		}),
+		parameters: WebSearchParams,
 
 		async execute(
 			_toolCallId: string,
-			params: {
-				query: string;
-				count?: number;
-				domain?: string;
-				recency?: string;
-			},
+			params: WebSearchParamsType,
 			signal: AbortSignal | undefined,
 		) {
 			const body: Record<string, unknown> = {
@@ -168,23 +223,24 @@ export default function (pi: ExtensionAPI) {
 				search_query: params.query,
 			};
 
-			if (params.count) {
+			if (params.count !== undefined) {
 				body.count = params.count;
 			}
-			if (params.domain) {
+			if (params.domain !== undefined) {
 				body.search_domain_filter = params.domain;
 			}
-			if (params.recency) {
+			if (params.recency !== undefined) {
 				body.search_recency_filter = params.recency;
 			}
 
 			const data = (await zaiFetch(ZAI_SEARCH_URL, body, signal)) as ZaiSearchResponse;
-			const formatted = formatSearchResults(data.search_result ?? []);
+			const results = Array.isArray(data.search_result) ? data.search_result : [];
+			const formatted = formatSearchResults(results);
 
 			return {
 				content: [{ type: "text" as const, text: formatted }],
 				details: {
-					resultCount: data.search_result?.length ?? 0,
+					resultCount: results.length,
 					requestId: data.id,
 				},
 			};
@@ -203,59 +259,14 @@ export default function (pi: ExtensionAPI) {
 			"Use web_read when you need to read the full content of a specific web page URL.",
 			"Use web_read to get detailed content from a URL found via web_search.",
 		],
-		parameters: Type.Object({
-			url: Type.String({
-				description: "The URL to read and parse",
-			}),
-			return_format: Type.Optional(
-				StringEnum(["markdown", "text"] as const, {
-					description: "Return format for the page content. Default is markdown.",
-				}),
-			),
-			no_cache: Type.Optional(
-				Type.Boolean({
-					description: "Whether to disable caching. Default is false.",
-				}),
-			),
-			retain_images: Type.Optional(
-				Type.Boolean({
-					description: "Whether to retain images in the output. Default is true.",
-				}),
-			),
-			with_images_summary: Type.Optional(
-				Type.Boolean({
-					description:
-						"Whether to include a summary of images found on the page. Default is false.",
-				}),
-			),
-			with_links_summary: Type.Optional(
-				Type.Boolean({
-					description: "Whether to include a summary of links found on the page. Default is false.",
-				}),
-			),
-			timeout: Type.Optional(
-				Type.Number({
-					description: "Request timeout in seconds. Default is 20.",
-				}),
-			),
-		}),
+		parameters: WebReadParams,
 
-		async execute(
-			_toolCallId: string,
-			params: {
-				url: string;
-				return_format?: string;
-				no_cache?: boolean;
-				retain_images?: boolean;
-				with_images_summary?: boolean;
-				with_links_summary?: boolean;
-				timeout?: number;
-			},
-			signal: AbortSignal | undefined,
-		) {
+		async execute(_toolCallId: string, params: WebReadParamsType, signal: AbortSignal | undefined) {
+			validateUrl(params.url);
+
 			const body: Record<string, unknown> = { url: params.url };
 
-			if (params.return_format) {
+			if (params.return_format !== undefined) {
 				body.return_format = params.return_format;
 			}
 			if (params.no_cache !== undefined) {
@@ -270,7 +281,7 @@ export default function (pi: ExtensionAPI) {
 			if (params.with_links_summary !== undefined) {
 				body.with_links_summary = params.with_links_summary;
 			}
-			if (params.timeout) {
+			if (params.timeout !== undefined) {
 				body.timeout = params.timeout;
 			}
 
