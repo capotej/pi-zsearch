@@ -1,0 +1,48 @@
+{
+	"name": "@capotej/pi-zsearch",
+	"version": "1.0.5",
+	"type": "module",
+	"description": "Adds a web_search tool powered by z.ai zsearch API.",
+	"keywords": [
+		"pi-package",
+		"zai",
+		"zsearch"
+	],
+	"license": "MIT",
+	"author": "Julio Capote <6135+capotej@users.noreply.github.com>",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/capotej/pi-zsearch.git"
+	},
+	"files": [
+		"index.js",
+		"index.d.ts",
+		"README.md",
+		"LICENSE"
+	],
+	"pi": {
+		"extensions": [
+			"./index.js"
+		]
+	},
+	"peerDependencies": {
+		"@mariozechner/pi-coding-agent": "*"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "1.9.4",
+		"@mariozechner/pi-coding-agent": "^0.73.1",
+		"@types/node": "^22.0.0",
+		"typescript": "^6.0.2"
+	},
+	"scripts": {
+		"build": "tsc",
+		"prepare": "tsc",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
+		"format": "biome format --write ."
+	},
+	"packageManager": "pnpm@10.33.2",
+	"publishConfig": {
+		"access": "public"
+	}
+}
