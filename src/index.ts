@@ -8,14 +8,10 @@
  * - web_read:   https://docs.z.ai/api-reference/tools/web-reader
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-import {
-	truncateHead,
-	DEFAULT_MAX_BYTES,
-	DEFAULT_MAX_LINES,
-} from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, truncateHead } from "@mariozechner/pi-coding-agent";
+import { Type } from "typebox";
 
 const ZAI_SEARCH_URL = "https://api.z.ai/api/paas/v4/web_search";
 const ZAI_READER_URL = "https://api.z.ai/api/paas/v4/reader";
@@ -78,9 +74,7 @@ async function zaiFetch(
 
 	if (!response.ok) {
 		const errorText = await response.text().catch(() => "");
-		throw new Error(
-			`Z.AI API error (${response.status}): ${errorText || response.statusText}`,
-		);
+		throw new Error(`Z.AI API error (${response.status}): ${errorText || response.statusText}`);
 	}
 
 	return response.json();
@@ -107,8 +101,12 @@ function formatSearchResults(results: ZaiSearchResult[]): string {
 	const lines: string[] = [];
 	for (const r of results) {
 		lines.push(`## ${r.title}`);
-		if (r.media) lines.push(`Source: ${r.media}`);
-		if (r.publish_date) lines.push(`Published: ${r.publish_date}`);
+		if (r.media) {
+			lines.push(`Source: ${r.media}`);
+		}
+		if (r.publish_date) {
+			lines.push(`Published: ${r.publish_date}`);
+		}
 		lines.push(`URL: ${r.link}`);
 		lines.push(r.content);
 		lines.push("");
@@ -138,32 +136,20 @@ export default function (pi: ExtensionAPI) {
 			}),
 			count: Type.Optional(
 				Type.Number({
-					description:
-						"Number of results to return (1-50, default 10)",
+					description: "Number of results to return (1-50, default 10)",
 					minimum: 1,
 					maximum: 50,
 				}),
 			),
 			domain: Type.Optional(
 				Type.String({
-					description:
-						"Limit results to a specific domain (e.g. 'github.com')",
+					description: "Limit results to a specific domain (e.g. 'github.com')",
 				}),
 			),
 			recency: Type.Optional(
-				StringEnum(
-					[
-						"oneDay",
-						"oneWeek",
-						"oneMonth",
-						"oneYear",
-						"noLimit",
-					] as const,
-					{
-						description:
-							"Time range filter: oneDay, oneWeek, oneMonth, oneYear, noLimit (default)",
-					},
-				),
+				StringEnum(["oneDay", "oneWeek", "oneMonth", "oneYear", "noLimit"] as const, {
+					description: "Time range filter: oneDay, oneWeek, oneMonth, oneYear, noLimit (default)",
+				}),
 			),
 		}),
 
@@ -182,15 +168,17 @@ export default function (pi: ExtensionAPI) {
 				search_query: params.query,
 			};
 
-			if (params.count) body.count = params.count;
-			if (params.domain) body.search_domain_filter = params.domain;
-			if (params.recency) body.search_recency_filter = params.recency;
+			if (params.count) {
+				body.count = params.count;
+			}
+			if (params.domain) {
+				body.search_domain_filter = params.domain;
+			}
+			if (params.recency) {
+				body.search_recency_filter = params.recency;
+			}
 
-			const data = (await zaiFetch(
-				ZAI_SEARCH_URL,
-				body,
-				signal,
-			)) as ZaiSearchResponse;
+			const data = (await zaiFetch(ZAI_SEARCH_URL, body, signal)) as ZaiSearchResponse;
 			const formatted = formatSearchResults(data.search_result ?? []);
 
 			return {
@@ -221,20 +209,17 @@ export default function (pi: ExtensionAPI) {
 			}),
 			return_format: Type.Optional(
 				StringEnum(["markdown", "text"] as const, {
-					description:
-						"Return format for the page content. Default is markdown.",
+					description: "Return format for the page content. Default is markdown.",
 				}),
 			),
 			no_cache: Type.Optional(
 				Type.Boolean({
-					description:
-						"Whether to disable caching. Default is false.",
+					description: "Whether to disable caching. Default is false.",
 				}),
 			),
 			retain_images: Type.Optional(
 				Type.Boolean({
-					description:
-						"Whether to retain images in the output. Default is true.",
+					description: "Whether to retain images in the output. Default is true.",
 				}),
 			),
 			with_images_summary: Type.Optional(
@@ -245,14 +230,12 @@ export default function (pi: ExtensionAPI) {
 			),
 			with_links_summary: Type.Optional(
 				Type.Boolean({
-					description:
-						"Whether to include a summary of links found on the page. Default is false.",
+					description: "Whether to include a summary of links found on the page. Default is false.",
 				}),
 			),
 			timeout: Type.Optional(
 				Type.Number({
-					description:
-						"Request timeout in seconds. Default is 20.",
+					description: "Request timeout in seconds. Default is 20.",
 				}),
 			),
 		}),
@@ -272,21 +255,26 @@ export default function (pi: ExtensionAPI) {
 		) {
 			const body: Record<string, unknown> = { url: params.url };
 
-			if (params.return_format) body.return_format = params.return_format;
-			if (params.no_cache !== undefined) body.no_cache = params.no_cache;
-			if (params.retain_images !== undefined)
+			if (params.return_format) {
+				body.return_format = params.return_format;
+			}
+			if (params.no_cache !== undefined) {
+				body.no_cache = params.no_cache;
+			}
+			if (params.retain_images !== undefined) {
 				body.retain_images = params.retain_images;
-			if (params.with_images_summary !== undefined)
+			}
+			if (params.with_images_summary !== undefined) {
 				body.with_images_summary = params.with_images_summary;
-			if (params.with_links_summary !== undefined)
+			}
+			if (params.with_links_summary !== undefined) {
 				body.with_links_summary = params.with_links_summary;
-			if (params.timeout) body.timeout = params.timeout;
+			}
+			if (params.timeout) {
+				body.timeout = params.timeout;
+			}
 
-			const data = (await zaiFetch(
-				ZAI_READER_URL,
-				body,
-				signal,
-			)) as ZaiReaderResponse;
+			const data = (await zaiFetch(ZAI_READER_URL, body, signal)) as ZaiReaderResponse;
 
 			const result = data.reader_result;
 			if (!result?.content) {

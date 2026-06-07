@@ -1,29 +1,18 @@
 {
 	"name": "@capotej/pi-zsearch",
-	"version": "1.0.5",
+	"version": "1.0.0",
 	"type": "module",
 	"description": "Adds web_search and web_read tools powered by the Z.AI API.",
-	"keywords": [
-		"pi-package",
-		"zai",
-		"zsearch"
-	],
+	"keywords": ["pi-package", "zai", "zsearch"],
 	"license": "MIT",
 	"author": "Julio Capote <6135+capotej@users.noreply.github.com>",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/capotej/pi-zsearch.git"
 	},
-	"files": [
-		"index.js",
-		"index.d.ts",
-		"README.md",
-		"LICENSE"
-	],
+	"files": ["index.js", "index.d.ts", "README.md", "LICENSE"],
 	"pi": {
-		"extensions": [
-			"./index.js"
-		]
+		"extensions": ["./index.js"]
 	},
 	"peerDependencies": {
 		"@mariozechner/pi-coding-agent": "*"
