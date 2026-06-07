@@ -11,9 +11,10 @@ Search the web using the [Z.AI Web Search API](https://docs.z.ai/guides/tools/we
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `query` | string | ✅ | — | The search query |
-| `count` | number | ❌ | `10` | Number of results (1–50) |
 | `domain` | string | ❌ | — | Limit to a specific domain (e.g. `github.com`) |
 | `recency` | enum | ❌ | `noLimit` | Time filter: `oneDay`, `oneWeek`, `oneMonth`, `oneYear`, `noLimit` |
+| `content_size` | enum | ❌ | `medium` | Summary length: `medium` (~400–600 words) or `high` (~2500 words, higher cost) |
+| `location` | enum | ❌ | `cn` | Region bias: `cn` (Chinese region) or `us` (non-Chinese region) |
 
 ### `web_read`
 
@@ -25,6 +26,8 @@ Read and parse a web page using the [Z.AI Web Reader API](https://docs.z.ai/api-
 | `return_format` | enum | ❌ | `markdown` | Output format: `markdown` or `text` |
 | `no_cache` | boolean | ❌ | `false` | Disable caching |
 | `retain_images` | boolean | ❌ | `true` | Keep images in output |
+| `no_gfm` | boolean | ❌ | `false` | Disable GitHub Flavored Markdown |
+| `keep_img_data_url` | boolean | ❌ | `false` | Keep image data URLs |
 | `with_images_summary` | boolean | ❌ | `false` | Include image summary |
 | `with_links_summary` | boolean | ❌ | `false` | Include links summary |
 | `timeout` | number | ❌ | `20` | Request timeout in seconds |
