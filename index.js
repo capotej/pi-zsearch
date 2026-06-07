@@ -1,14 +1,18 @@
 /**
- * Web Search Extension (powered by Z.AI)
+ * Web Search & Reader Extension (powered by Z.AI)
  *
- * Adds a `web_search` tool that calls the Z.AI Web Search API
- * (https://docs.z.ai/guides/tools/web-search). Requires ZAI_API_KEY
- * in the environment.
+ * Adds `web_search` and `web_read` tools that call the Z.AI APIs.
+ * Requires ZAI_API_KEY in the environment.
+ *
+ * - web_search: https://docs.z.ai/guides/tools/web-search
+ * - web_read:   https://docs.z.ai/api-reference/tools/web-reader
  */
 import { Type } from "typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { truncateHead, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, } from "@mariozechner/pi-coding-agent";
-const ZAI_BASE_URL = "https://api.z.ai/api/paas/v4/web_search";
+const ZAI_SEARCH_URL = "https://api.z.ai/api/paas/v4/web_search";
+const ZAI_READER_URL = "https://api.z.ai/api/paas/v4/reader";
+// ── Helpers ──────────────────────────────────────────────────────────────
 function getApiKey() {
     const key = process.env.ZAI_API_KEY;
     if (!key) {
@@ -16,7 +20,35 @@ function getApiKey() {
     }
     return key;
 }
-function formatResults(results) {
+async function zaiFetch(endpoint, body, signal) {
+    const apiKey = getApiKey();
+    const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal,
+    });
+    if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(`Z.AI API error (${response.status}): ${errorText || response.statusText}`);
+    }
+    return response.json();
+}
+function truncateOutput(text) {
+    const truncation = truncateHead(text, {
+        maxLines: DEFAULT_MAX_LINES,
+        maxBytes: DEFAULT_MAX_BYTES,
+    });
+    let out = truncation.content;
+    if (truncation.truncated) {
+        out += `\n\n[Output truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines]`;
+    }
+    return out;
+}
+function formatSearchResults(results) {
     if (results.length === 0) {
         return "No results found.";
     }
@@ -31,18 +63,11 @@ function formatResults(results) {
         lines.push(r.content);
         lines.push("");
     }
-    const text = lines.join("\n");
-    const truncation = truncateHead(text, {
-        maxLines: DEFAULT_MAX_LINES,
-        maxBytes: DEFAULT_MAX_BYTES,
-    });
-    let out = truncation.content;
-    if (truncation.truncated) {
-        out += `\n\n[Output truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines]`;
-    }
-    return out;
+    return truncateOutput(lines.join("\n"));
 }
+// ── Extension ────────────────────────────────────────────────────────────
 export default function (pi) {
+    // ── web_search ──────────────────────────────────────────────────────
     pi.registerTool({
         name: "web_search",
         label: "Web Search",
@@ -75,7 +100,6 @@ export default function (pi) {
             })),
         }),
         async execute(_toolCallId, params, signal) {
-            const apiKey = getApiKey();
             const body = {
                 search_engine: "search-prime",
                 search_query: params.query,
@@ -86,25 +110,74 @@ export default function (pi) {
                 body.search_domain_filter = params.domain;
             if (params.recency)
                 body.search_recency_filter = params.recency;
-            const response = await fetch(ZAI_BASE_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${apiKey}`,
-                },
-                body: JSON.stringify(body),
-                signal,
-            });
-            if (!response.ok) {
-                const errorText = await response.text().catch(() => "");
-                throw new Error(`Z.AI API error (${response.status}): ${errorText || response.statusText}`);
-            }
-            const data = (await response.json());
-            const formatted = formatResults(data.search_result ?? []);
+            const data = (await zaiFetch(ZAI_SEARCH_URL, body, signal));
+            const formatted = formatSearchResults(data.search_result ?? []);
             return {
                 content: [{ type: "text", text: formatted }],
                 details: {
                     resultCount: data.search_result?.length ?? 0,
+                    requestId: data.id,
+                },
+            };
+        },
+    });
+    // ── web_read ────────────────────────────────────────────────────────
+    pi.registerTool({
+        name: "web_read",
+        label: "Web Reader",
+        description: "Read and parse the content of a web page URL using the Z.AI Web Reader API. Returns the page content as markdown or plain text, with optional image retention and link/image summaries. Useful for reading articles, documentation, or any web page when you need the full content.",
+        promptSnippet: "Read and parse a web page URL for its full content",
+        promptGuidelines: [
+            "Use web_read when you need to read the full content of a specific web page URL.",
+            "Use web_read to get detailed content from a URL found via web_search.",
+        ],
+        parameters: Type.Object({
+            url: Type.String({
+                description: "The URL to read and parse",
+            }),
+            return_format: Type.Optional(StringEnum(["markdown", "text"], {
+                description: "Return format for the page content. Default is markdown.",
+            })),
+            no_cache: Type.Optional(Type.Boolean({
+                description: "Whether to disable caching. Default is false.",
+            })),
+            retain_images: Type.Optional(Type.Boolean({
+                description: "Whether to retain images in the output. Default is true.",
+            })),
+            with_images_summary: Type.Optional(Type.Boolean({
+                description: "Whether to include a summary of images found on the page. Default is false.",
+            })),
+            with_links_summary: Type.Optional(Type.Boolean({
+                description: "Whether to include a summary of links found on the page. Default is false.",
+            })),
+            timeout: Type.Optional(Type.Number({
+                description: "Request timeout in seconds. Default is 20.",
+            })),
+        }),
+        async execute(_toolCallId, params, signal) {
+            const body = { url: params.url };
+            if (params.return_format)
+                body.return_format = params.return_format;
+            if (params.no_cache !== undefined)
+                body.no_cache = params.no_cache;
+            if (params.retain_images !== undefined)
+                body.retain_images = params.retain_images;
+            if (params.with_images_summary !== undefined)
+                body.with_images_summary = params.with_images_summary;
+            if (params.with_links_summary !== undefined)
+                body.with_links_summary = params.with_links_summary;
+            if (params.timeout)
+                body.timeout = params.timeout;
+            const data = (await zaiFetch(ZAI_READER_URL, body, signal));
+            const result = data.reader_result;
+            if (!result?.content) {
+                throw new Error("No content returned from the Z.AI Reader API. The URL may be inaccessible or blocked.");
+            }
+            const content = truncateOutput(result.content);
+            return {
+                content: [{ type: "text", text: content }],
+                details: {
+                    description: result.description ?? "",
                     requestId: data.id,
                 },
             };
